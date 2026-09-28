@@ -1,0 +1,95 @@
+version: 2
+
+models:
+
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_users
+    columns:
+      - name: user_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        data_tests:
+          - not_null
+
+  - name: stg_product_events
+    columns:
+      - name: event_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: user_id
+        data_tests:
+          - not_null
+
+  - name: stg_subscriptions
+    columns:
+      - name: subscription_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        data_tests:
+          - not_null
+
+  - name: stg_invoices
+    columns:
+      - name: invoice_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        data_tests:
+          - not_null
+
+  - name: stg_support
+    columns:
+      - name: ticket_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        data_tests:
+          - not_null
+
+  - name: customer_health
+    columns:
+      - name: customer_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: revenue
+    columns:
+      - name: plan
+        data_tests:
+          - not_null
+
+  - name: product_usage
+    columns:
+      - name: usage_date
+        data_tests:
+          - not_null
+
+      - name: feature
+        data_tests:
+          - not_null
+
+  - name: support_sla
+    columns:
+      - name: ticket_id
+        data_tests:
+          - not_null
+          - unique
