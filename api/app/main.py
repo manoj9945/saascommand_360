@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+import joblib
 
 from api.app.db import get_connection
 
@@ -8,6 +10,14 @@ app = FastAPI(
     description="Backend API for SaaS product, revenue, customer health and live event analytics.",
     version="1.0.0",
 )
+
+MODEL_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "models"
+    / "churn_model.joblib"
+)
+
+churn_model = joblib.load(MODEL_PATH)
 
 app.add_middleware(
     CORSMiddleware,
@@ -224,6 +234,236 @@ def get_customer_health(limit: int = 10):
             }
             for row in rows
         ]
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/churn-risk")
+def get_churn_risk(limit: int = 10):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH subscription_features AS (
+                    SELECT
+                        s.account_id,
+
+                        COUNT(*) AS subscription_count,
+
+                        MAX(s.start_date) AS latest_subscription_start,
+
+                        AVG(dp.monthly_price) AS avg_plan_price,
+
+                        MAX(dp.monthly_price) AS max_plan_price,
+
+                        MAX(
+                            CASE
+                                WHEN s.status = 'Cancelled' THEN 1
+                                ELSE 0
+                            END
+                        ) AS churned
+
+                    FROM silver.subscriptions s
+
+                    LEFT JOIN silver.dim_plan dp
+                        ON s.plan = dp.plan_name
+
+                    GROUP BY s.account_id
+                ),
+
+                usage_features AS (
+                    SELECT
+                        u.account_id,
+
+                        COUNT(pe.event_id) AS usage_events,
+
+                        COUNT(DISTINCT pe.feature) AS features_used
+
+                    FROM silver.users u
+
+                    LEFT JOIN silver.product_events pe
+                        ON u.user_id = pe.user_id
+                        AND pe.is_valid_event = TRUE
+
+                    GROUP BY u.account_id
+                ),
+
+                support_features AS (
+                    SELECT
+                        account_id,
+
+                        COUNT(*) AS support_ticket_count,
+
+                        AVG(
+                            EXTRACT(
+                                EPOCH FROM (
+                                    resolved_at::TIMESTAMP
+                                    - created_at::TIMESTAMP
+                                )
+                            ) / 3600.0
+                        ) AS avg_resolution_hours
+
+                    FROM silver.support
+
+                    WHERE resolved_at IS NOT NULL
+
+                    GROUP BY account_id
+                ),
+
+                billing_features AS (
+                    SELECT
+                        account_id,
+
+                        COUNT(*) AS invoice_count,
+
+                        SUM(
+                            CASE
+                                WHEN status = 'Failed' THEN 1
+                                ELSE 0
+                            END
+                        ) AS failed_invoice_count
+
+                    FROM silver.invoices
+
+                    GROUP BY account_id
+                )
+
+                SELECT
+                    a.account_id,
+                    a.industry,
+                    a.size,
+                    a.region,
+
+                    sf.subscription_count,
+                    sf.latest_subscription_start,
+                    sf.avg_plan_price,
+                    sf.max_plan_price,
+
+                    COALESCE(uf.usage_events, 0) AS usage_events,
+                    COALESCE(uf.features_used, 0) AS features_used,
+
+                    COALESCE(
+                        sp.support_ticket_count,
+                        0
+                    ) AS support_ticket_count,
+
+                    COALESCE(
+                        sp.avg_resolution_hours,
+                        0
+                    ) AS avg_resolution_hours,
+
+                    COALESCE(
+                        bf.invoice_count,
+                        0
+                    ) AS invoice_count,
+
+                    COALESCE(
+                        bf.failed_invoice_count,
+                        0
+                    ) AS failed_invoice_count,
+
+                    CASE
+                        WHEN COALESCE(bf.invoice_count, 0) > 0
+                        THEN
+                            COALESCE(
+                                bf.failed_invoice_count,
+                                0
+                            )::FLOAT
+                            / bf.invoice_count
+                        ELSE 0
+                    END AS failed_invoice_rate
+
+                FROM silver.accounts a
+
+                INNER JOIN subscription_features sf
+                    ON a.account_id = sf.account_id
+
+                LEFT JOIN usage_features uf
+                    ON a.account_id = uf.account_id
+
+                LEFT JOIN support_features sp
+                    ON a.account_id = sp.account_id
+
+                LEFT JOIN billing_features bf
+                    ON a.account_id = bf.account_id
+
+                ORDER BY a.account_id
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+
+            rows = cur.fetchall()
+
+        import pandas as pd
+
+        columns = [
+            "account_id",
+            "industry",
+            "size",
+            "region",
+            "subscription_count",
+            "latest_subscription_start",
+            "avg_plan_price",
+            "max_plan_price",
+            "usage_events",
+            "features_used",
+            "support_ticket_count",
+            "avg_resolution_hours",
+            "invoice_count",
+            "failed_invoice_count",
+            "failed_invoice_rate",
+        ]
+
+        df = pd.DataFrame(rows, columns=columns)
+
+        reference_date = pd.Timestamp("2026-12-31")
+
+        df["subscription_age_days"] = (
+            reference_date
+            - pd.to_datetime(df["latest_subscription_start"])
+        ).dt.days
+
+        df = df.drop(
+            columns=["latest_subscription_start"]
+        )
+
+        probabilities = churn_model.predict_proba(df)[:, 1]
+
+        results = []
+
+        for index, probability in enumerate(probabilities):
+            probability = float(probability)
+
+            if probability >= 0.70:
+                risk_level = "High"
+            elif probability >= 0.40:
+                risk_level = "Medium"
+            else:
+                risk_level = "Low"
+
+            results.append(
+                {
+                    "customer_id": int(
+                        df.iloc[index]["account_id"]
+                    ),
+                    "churn_probability": round(
+                        probability,
+                        4
+                    ),
+                    "risk_level": risk_level,
+                }
+            )
+
+        results.sort(
+            key=lambda x: x["churn_probability"],
+            reverse=True
+        )
+
+        return results
 
     finally:
         conn.close()
