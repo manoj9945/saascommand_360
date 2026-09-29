@@ -8,6 +8,7 @@ function App() {
   const [usage, setUsage] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [customerHealth, setCustomerHealth] = useState(null);
+  const [customerHealthList, setCustomerHealthList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -21,11 +22,13 @@ function App() {
         usageResponse,
         eventsResponse,
         healthResponse,
+        customerHealthListResponse,
       ] = await Promise.all([
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
         fetch(`${API_BASE_URL}/api/events/live?limit=8`),
         fetch(`${API_BASE_URL}/api/customers/100003/health`),
+        fetch(`${API_BASE_URL}/api/customer-health?limit=10`),
       ]);
 
       if (
@@ -41,11 +44,13 @@ function App() {
       const usageData = await usageResponse.json();
       const eventsData = await eventsResponse.json();
       const healthData = await healthResponse.json();
+      const customerHealthListData = await customerHealthListResponse.json();
 
       setRevenue(revenueData);
       setUsage(usageData);
       setLiveEvents(eventsData);
       setCustomerHealth(healthData);
+      setCustomerHealthList(customerHealthListData);
     } catch (err) {
       console.error(err);
       setError(
@@ -221,7 +226,46 @@ function App() {
                 )}
               </div>
             </section>
+            <div className="section-card">
+  <div className="section-header">
+    <div>
+      <h2>Customer Health Watchlist</h2>
+      <p>Customers with the lowest health scores</p>
+    </div>
+  </div>
 
+  <div className="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer ID</th>
+          <th>Usage</th>
+          <th>Support</th>
+          <th>Billing</th>
+          <th>Health Score</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {customerHealthList.map((customer) => (
+          <tr key={customer.customer_id}>
+            <td>{customer.customer_id}</td>
+            <td>{customer.usage_score}</td>
+            <td>{customer.support_score}</td>
+            <td>{customer.billing_score}</td>
+            <td>{customer.health_score}</td>
+            <td>
+              <span className="status-badge">
+                {customer.health_status}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
             <section className="content-grid">
               <div className="panel">
                 <div className="panel-header">
