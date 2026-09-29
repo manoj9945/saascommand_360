@@ -9,6 +9,7 @@ function App() {
   const [liveEvents, setLiveEvents] = useState([]);
   const [customerHealth, setCustomerHealth] = useState(null);
   const [customerHealthList, setCustomerHealthList] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [churnRisk, setChurnRisk] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -25,6 +26,7 @@ function App() {
         healthResponse,
         customerHealthListResponse,
         churnRiskResponse,
+        alertsResponse,
       ] = await Promise.all([
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
@@ -32,6 +34,7 @@ function App() {
         fetch(`${API_BASE_URL}/api/customers/100003/health`),
         fetch(`${API_BASE_URL}/api/customer-health?limit=10`),
         fetch(`${API_BASE_URL}/api/churn-risk?limit=10`),
+        fetch(`${API_BASE_URL}/api/alerts?limit=20`),
       ]);
 
       if (
@@ -40,6 +43,7 @@ function App() {
         !eventsResponse.ok ||
         !healthResponse.ok ||
         !customerHealthListResponse.ok ||
+        !alertsResponse.ok ||
         !churnRiskResponse.ok
       ) {
         throw new Error("One or more API requests failed.");
@@ -51,6 +55,7 @@ function App() {
       const healthData = await healthResponse.json();
       const customerHealthListData = await customerHealthListResponse.json();
       const churnRiskData = await churnRiskResponse.json();
+      const alertsData = await alertsResponse.json();
 
       setRevenue(revenueData);
       setUsage(usageData);
@@ -58,6 +63,7 @@ function App() {
       setCustomerHealth(healthData);
       setCustomerHealthList(customerHealthListData);
       setChurnRisk(churnRiskData);
+      setAlerts(alertsData);
     } catch (err) {
       console.error(err);
       setError(
@@ -311,6 +317,82 @@ function App() {
   </div>
 </div>
 
+<section className="dashboard-section">
+    <h2>Alert Center</h2>
+
+    <p>
+        Customer-success and billing alerts requiring attention
+    </p>
+
+    <div className="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer ID</th>
+                    <th>Alert Type</th>
+                    <th>Severity</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Reason</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {alerts.map((alert) => (
+                    <tr key={alert.alert_id}>
+                        <td>{alert.customer_id}</td>
+                        <td>{alert.alert_type}</td>
+                        <td>{alert.severity}</td>
+                        <td>{alert.owner}</td>
+                        <td>{alert.status}</td>
+                        <td>{alert.reason}</td>
+                        <td>
+                            {alert.status === "Open" ? (
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const response = await fetch(
+                                                `${API_BASE_URL}/api/alerts/${alert.alert_id}/acknowledge`,
+                                                {
+                                                    method: "POST",
+                                                }
+                                            );
+
+                                            if (!response.ok) {
+                                                throw new Error(
+                                                    "Failed to acknowledge alert"
+                                                );
+                                            }
+
+                                            setAlerts((currentAlerts) =>
+                                                currentAlerts.map((item) =>
+                                                    item.alert_id ===
+                                                    alert.alert_id
+                                                        ? {
+                                                              ...item,
+                                                              status: "Acknowledged",
+                                                          }
+                                                        : item
+                                                )
+                                            );
+                                        } catch (error) {
+                                            console.error(error);
+                                        }
+                                    }}
+                                >
+                                    Acknowledge
+                                </button>
+                            ) : (
+                                "Done"
+                            )}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+</section>
 
             <section className="content-grid">
               <div className="panel">

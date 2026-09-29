@@ -467,3 +467,110 @@ def get_churn_risk(limit: int = 10):
 
     finally:
         conn.close()
+
+
+@app.get("/api/alerts")
+def get_alerts(limit: int = 20):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    alert_id,
+                    customer_id,
+                    alert_type,
+                    severity,
+                    owner,
+                    status,
+                    reason,
+                    recommended_action,
+                    source,
+                    created_at,
+                    acknowledged_at
+                FROM analytics.alerts
+                ORDER BY
+                    CASE severity
+                        WHEN 'High' THEN 1
+                        WHEN 'Medium' THEN 2
+                        ELSE 3
+                    END,
+                    created_at DESC
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+
+            rows = cur.fetchall()
+
+        return [
+            {
+                "alert_id": row[0],
+                "customer_id": row[1],
+                "alert_type": row[2],
+                "severity": row[3],
+                "owner": row[4],
+                "status": row[5],
+                "reason": row[6],
+                "recommended_action": row[7],
+                "source": row[8],
+                "created_at": row[9],
+                "acknowledged_at": row[10],
+            }
+            for row in rows
+        ]
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(alert_id: int):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE analytics.alerts
+                SET
+                    status = 'Acknowledged',
+                    acknowledged_at = CURRENT_TIMESTAMP
+                WHERE alert_id = %s
+                  AND status = 'Open'
+                RETURNING
+                    alert_id,
+                    customer_id,
+                    alert_type,
+                    severity,
+                    owner,
+                    status,
+                    acknowledged_at;
+                """,
+                (alert_id,),
+            )
+
+            row = cur.fetchone()
+
+        if row is None:
+            return {
+                "message": "Alert not found or already acknowledged",
+                "alert_id": alert_id,
+            }
+
+        conn.commit()
+
+        return {
+            "message": "Alert acknowledged successfully",
+            "alert_id": row[0],
+            "customer_id": row[1],
+            "alert_type": row[2],
+            "severity": row[3],
+            "owner": row[4],
+            "status": row[5],
+            "acknowledged_at": row[6],
+        }
+
+    finally:
+        conn.close()
