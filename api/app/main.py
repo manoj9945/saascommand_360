@@ -574,3 +574,52 @@ def acknowledge_alert(alert_id: int):
 
     finally:
         conn.close()
+
+
+
+@app.get("/api/data-quality")
+def get_data_quality():
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    check_name,
+                    table_name,
+                    check_type,
+                    status,
+                    actual_value,
+                    expected_value,
+                    message,
+                    checked_at
+                FROM analytics.data_quality_results
+                ORDER BY
+                    CASE status
+                        WHEN 'FAIL' THEN 1
+                        WHEN 'WARN' THEN 2
+                        ELSE 3
+                    END,
+                    check_name;
+                """
+            )
+
+            rows = cur.fetchall()
+
+        return [
+            {
+                "check_name": row[0],
+                "table_name": row[1],
+                "check_type": row[2],
+                "status": row[3],
+                "actual_value": float(row[4]) if row[4] is not None else None,
+                "expected_value": float(row[5]) if row[5] is not None else None,
+                "message": row[6],
+                "checked_at": row[7].isoformat() if row[7] else None,
+            }
+            for row in rows
+        ]
+
+    finally:
+        conn.close()

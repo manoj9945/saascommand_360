@@ -11,6 +11,7 @@ function App() {
   const [customerHealthList, setCustomerHealthList] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [churnRisk, setChurnRisk] = useState([]);
+  const [dataQuality, setDataQuality] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -27,6 +28,7 @@ function App() {
         customerHealthListResponse,
         churnRiskResponse,
         alertsResponse,
+        dataQualityResponse
       ] = await Promise.all([
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
@@ -35,6 +37,7 @@ function App() {
         fetch(`${API_BASE_URL}/api/customer-health?limit=10`),
         fetch(`${API_BASE_URL}/api/churn-risk?limit=10`),
         fetch(`${API_BASE_URL}/api/alerts?limit=20`),
+        fetch(`${API_BASE_URL}/api/data-quality`)
       ]);
 
       if (
@@ -44,7 +47,8 @@ function App() {
         !healthResponse.ok ||
         !customerHealthListResponse.ok ||
         !alertsResponse.ok ||
-        !churnRiskResponse.ok
+        !churnRiskResponse.ok ||
+        !dataQualityResponse.ok
       ) {
         throw new Error("One or more API requests failed.");
       }
@@ -56,6 +60,7 @@ function App() {
       const customerHealthListData = await customerHealthListResponse.json();
       const churnRiskData = await churnRiskResponse.json();
       const alertsData = await alertsResponse.json();
+      const dataQualityData = await dataQualityResponse.json();
 
       setRevenue(revenueData);
       setUsage(usageData);
@@ -64,6 +69,7 @@ function App() {
       setCustomerHealthList(customerHealthListData);
       setChurnRisk(churnRiskData);
       setAlerts(alertsData);
+      setDataQuality(dataQualityData);
     } catch (err) {
       console.error(err);
       setError(
@@ -387,6 +393,41 @@ function App() {
                                 "Done"
                             )}
                         </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section className="section">
+    <h2>Data Quality</h2>
+    <p>Pipeline quality checks and data validation results</p>
+
+    <div className="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>CHECK</th>
+                    <th>TABLE</th>
+                    <th>TYPE</th>
+                    <th>STATUS</th>
+                    <th>ACTUAL</th>
+                    <th>EXPECTED</th>
+                    <th>MESSAGE</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {dataQuality.map((check) => (
+                    <tr key={check.check_name}>
+                        <td>{check.check_name}</td>
+                        <td>{check.table_name}</td>
+                        <td>{check.check_type}</td>
+                        <td>{check.status}</td>
+                        <td>{check.actual_value}</td>
+                        <td>{check.expected_value}</td>
+                        <td>{check.message}</td>
                     </tr>
                 ))}
             </tbody>
