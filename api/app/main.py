@@ -187,3 +187,43 @@ def get_product_usage(limit: int = 100):
 
     finally:
         conn.close()
+
+@app.get("/api/customer-health")
+def get_customer_health(limit: int = 10):
+
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    customer_id,
+                    usage_score,
+                    support_score,
+                    billing_score,
+                    health_score,
+                    health_status
+                FROM dbt.customer_health
+                ORDER BY health_score ASC, customer_id
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+
+            rows = cur.fetchall()
+
+        return [
+            {
+                "customer_id": row[0],
+                "usage_score": row[1],
+                "support_score": row[2],
+                "billing_score": row[3],
+                "health_score": float(row[4]),
+                "health_status": row[5],
+            }
+            for row in rows
+        ]
+
+    finally:
+        conn.close()
