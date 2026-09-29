@@ -9,6 +9,7 @@ function App() {
   const [liveEvents, setLiveEvents] = useState([]);
   const [customerHealth, setCustomerHealth] = useState(null);
   const [customerHealthList, setCustomerHealthList] = useState([]);
+  const [churnRisk, setChurnRisk] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -23,19 +24,23 @@ function App() {
         eventsResponse,
         healthResponse,
         customerHealthListResponse,
+        churnRiskResponse,
       ] = await Promise.all([
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
         fetch(`${API_BASE_URL}/api/events/live?limit=8`),
         fetch(`${API_BASE_URL}/api/customers/100003/health`),
         fetch(`${API_BASE_URL}/api/customer-health?limit=10`),
+        fetch(`${API_BASE_URL}/api/churn-risk?limit=10`),
       ]);
 
       if (
         !revenueResponse.ok ||
         !usageResponse.ok ||
         !eventsResponse.ok ||
-        !healthResponse.ok
+        !healthResponse.ok ||
+        !customerHealthListResponse.ok ||
+        !churnRiskResponse.ok
       ) {
         throw new Error("One or more API requests failed.");
       }
@@ -45,12 +50,14 @@ function App() {
       const eventsData = await eventsResponse.json();
       const healthData = await healthResponse.json();
       const customerHealthListData = await customerHealthListResponse.json();
+      const churnRiskData = await churnRiskResponse.json();
 
       setRevenue(revenueData);
       setUsage(usageData);
       setLiveEvents(eventsData);
       setCustomerHealth(healthData);
       setCustomerHealthList(customerHealthListData);
+      setChurnRisk(churnRiskData);
     } catch (err) {
       console.error(err);
       setError(
@@ -266,6 +273,45 @@ function App() {
     </table>
   </div>
 </div>
+
+<div className="section-card">
+  <div className="section-header">
+    <div>
+      <h2>Churn Risk</h2>
+      <p>Customers with the highest predicted churn probability</p>
+    </div>
+  </div>
+
+  <div className="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer ID</th>
+          <th>Churn Probability</th>
+          <th>Risk Level</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {churnRisk.map((customer) => (
+          <tr key={customer.customer_id}>
+            <td>{customer.customer_id}</td>
+            <td>
+              {(customer.churn_probability * 100).toFixed(1)}%
+            </td>
+            <td>
+              <span className="status-badge">
+                {customer.risk_level}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
             <section className="content-grid">
               <div className="panel">
                 <div className="panel-header">
