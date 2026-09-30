@@ -1,2 +1,10 @@
 pandas>=2.0,<3.0
 numpy>=1.24,<3.0
+
+fastapi
+uvicorn[standard]
+psycopg[binary]
+python-dotenv
+
+scikit-learn
+joblib
