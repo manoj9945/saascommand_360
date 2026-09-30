@@ -623,3 +623,39 @@ def get_data_quality():
 
     finally:
         conn.close()
+
+
+@app.get("/api/forecasts")
+def get_revenue_forecasts():
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    forecast_month,
+                    forecast_revenue,
+                    model_name,
+                    validation_mae,
+                    generated_at
+                FROM analytics.revenue_forecast
+                ORDER BY forecast_month;
+                """
+            )
+
+            rows = cur.fetchall()
+
+        return [
+            {
+                "forecast_month": row[0].isoformat(),
+                "forecast_revenue": float(row[1]),
+                "model_name": row[2],
+                "validation_mae": float(row[3]) if row[3] is not None else None,
+                "generated_at": row[4].isoformat(),
+            }
+            for row in rows
+        ]
+
+    finally:
+        conn.close()

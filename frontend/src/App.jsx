@@ -12,6 +12,7 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [churnRisk, setChurnRisk] = useState([]);
   const [dataQuality, setDataQuality] = useState([]);
+  const [forecasts, setForecasts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -28,7 +29,8 @@ function App() {
         customerHealthListResponse,
         churnRiskResponse,
         alertsResponse,
-        dataQualityResponse
+        dataQualityResponse,
+        forecastsResponse
       ] = await Promise.all([
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
@@ -37,7 +39,8 @@ function App() {
         fetch(`${API_BASE_URL}/api/customer-health?limit=10`),
         fetch(`${API_BASE_URL}/api/churn-risk?limit=10`),
         fetch(`${API_BASE_URL}/api/alerts?limit=20`),
-        fetch(`${API_BASE_URL}/api/data-quality`)
+        fetch(`${API_BASE_URL}/api/data-quality`),
+        fetch(`${API_BASE_URL}/api/forecasts`)
       ]);
 
       if (
@@ -48,7 +51,8 @@ function App() {
         !customerHealthListResponse.ok ||
         !alertsResponse.ok ||
         !churnRiskResponse.ok ||
-        !dataQualityResponse.ok
+        !dataQualityResponse.ok ||
+        !forecastsResponse.ok
       ) {
         throw new Error("One or more API requests failed.");
       }
@@ -61,6 +65,7 @@ function App() {
       const churnRiskData = await churnRiskResponse.json();
       const alertsData = await alertsResponse.json();
       const dataQualityData = await dataQualityResponse.json();
+      const forecastsData = await forecastsResponse.json();
 
       setRevenue(revenueData);
       setUsage(usageData);
@@ -70,6 +75,7 @@ function App() {
       setChurnRisk(churnRiskData);
       setAlerts(alertsData);
       setDataQuality(dataQualityData);
+      setForecasts(forecastsData);
     } catch (err) {
       console.error(err);
       setError(
@@ -246,6 +252,47 @@ function App() {
               </div>
             </section>
             <div className="section-card">
+
+<section className="section-card">
+  <div className="section-header">
+    <div>
+      <h2>Revenue Forecast</h2>
+      <p>Next 3 months predicted revenue</p>
+    </div>
+  </div>
+
+  <div className="forecast-grid">
+    {forecasts.map((forecast) => (
+      <div
+        className="forecast-card"
+        key={forecast.forecast_month}
+      >
+        <h3>
+          {new Date(
+            forecast.forecast_month
+          ).toLocaleDateString("en-US", {
+            month: "short",
+            year: "numeric",
+          })}
+        </h3>
+
+        <div className="forecast-value">
+          {formatCurrency(forecast.forecast_revenue)}
+        </div>
+
+        <p>
+          Model: {forecast.model_name}
+        </p>
+
+        <p>
+          Validation MAE:{" "}
+          {formatCurrency(forecast.validation_mae)}
+        </p>
+      </div>
+    ))}
+  </div>
+</section>
+  
   <div className="section-header">
     <div>
       <h2>Customer Health Watchlist</h2>

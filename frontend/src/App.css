@@ -281,3 +281,38 @@ td {
     grid-template-columns: 1fr;
   }
 }
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.forecast-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+}
+
+.forecast-card h3 {
+  margin: 0 0 12px;
+}
+
+.forecast-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.forecast-card p {
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .forecast-grid {
+    grid-template-columns: 1fr;
+  }
+}
