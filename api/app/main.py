@@ -490,13 +490,7 @@ def get_alerts(limit: int = 20):
                     created_at,
                     acknowledged_at
                 FROM analytics.alerts
-                ORDER BY
-                    CASE severity
-                        WHEN 'High' THEN 1
-                        WHEN 'Medium' THEN 2
-                        ELSE 3
-                    END,
-                    created_at DESC
+                ORDER BY created_at DESC
                 LIMIT %s;
                 """,
                 (limit,),
