@@ -41,6 +41,107 @@ def api_health():
         "service": "SaaSCommand 360 API"
     }
 
+@app.get("/api/dashboard")
+def get_dashboard():
+
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+
+            # -------------------------------------------------
+            # Revenue KPIs
+            # -------------------------------------------------
+
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(SUM(active_mrr), 0) AS active_mrr,
+                    COALESCE(SUM(active_arr), 0) AS active_arr
+                FROM dbt.revenue;
+                """
+            )
+
+            revenue_row = cur.fetchone()
+
+            active_mrr = float(revenue_row[0])
+            active_arr = float(revenue_row[1])
+
+
+            # -------------------------------------------------
+            # Customer and subscription KPIs
+            # -------------------------------------------------
+
+            cur.execute(
+                """
+                SELECT
+                    SUM(active_customers) AS active_customers,
+                    SUM(active_subscriptions) AS active_subscriptions
+                FROM dbt.revenue;
+                """
+            )
+
+            subscription_row = cur.fetchone()
+
+            active_customers = int(subscription_row[0])
+            active_subscriptions = int(subscription_row[1])
+
+
+            # -------------------------------------------------
+            # Open alerts
+            # -------------------------------------------------
+
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM analytics.alerts
+                WHERE status = 'Open';
+                """
+            )
+
+            open_alerts = cur.fetchone()[0]
+
+
+            # -------------------------------------------------
+            # Customer health summary
+            # -------------------------------------------------
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE health_status = 'Healthy'
+                    ) AS healthy_customers,
+
+                    COUNT(*) FILTER (
+                        WHERE health_status = 'Watch'
+                    ) AS watch_customers,
+
+                    COUNT(*) FILTER (
+                        WHERE health_status = 'At Risk'
+                    ) AS at_risk_customers
+
+                FROM dbt.customer_health;
+                """
+            )
+
+            health_row = cur.fetchone()
+
+
+        return {
+            "active_mrr": active_mrr,
+            "active_arr": active_arr,
+            "active_customers": active_customers,
+            "active_subscriptions": active_subscriptions,
+            "open_alerts": open_alerts,
+            "healthy_customers": health_row[0],
+            "watch_customers": health_row[1],
+            "at_risk_customers": health_row[2],
+        }
+
+
+    finally:
+        conn.close()
 
 @app.get("/api/events/live")
 def get_live_events(limit: int = 20):
@@ -469,6 +570,41 @@ def get_churn_risk(limit: int = 10):
         conn.close()
 
 
+@app.get("/api/risk")
+def get_risk_summary():
+
+    # Reuse the exact same churn-risk calculation
+    # and retrieve all eligible customers.
+    risk_results = get_churn_risk(limit=5000)
+
+    total_customers = len(risk_results)
+
+    high_risk_customers = sum(
+        1
+        for customer in risk_results
+        if customer["risk_level"] == "High"
+    )
+
+    medium_risk_customers = sum(
+        1
+        for customer in risk_results
+        if customer["risk_level"] == "Medium"
+    )
+
+    low_risk_customers = sum(
+        1
+        for customer in risk_results
+        if customer["risk_level"] == "Low"
+    )
+
+    return {
+        "total_customers": total_customers,
+        "high_risk_customers": high_risk_customers,
+        "medium_risk_customers": medium_risk_customers,
+        "low_risk_customers": low_risk_customers,
+    }
+
+
 @app.get("/api/alerts")
 def get_alerts(limit: int = 20):
     conn = get_connection()
@@ -650,6 +786,63 @@ def get_revenue_forecasts():
             }
             for row in rows
         ]
+
+    finally:
+        conn.close()
+
+
+@app.post("/api/customer-action")
+def create_customer_action(
+    customer_id: int,
+    action_type: str,
+    owner: str = "CSM",
+    notes: str = ""
+):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO analytics.customer_actions (
+                    customer_id,
+                    action_type,
+                    owner,
+                    notes,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, 'Created')
+                RETURNING
+                    action_id,
+                    customer_id,
+                    action_type,
+                    owner,
+                    notes,
+                    status,
+                    created_at;
+                """,
+                (
+                    customer_id,
+                    action_type,
+                    owner,
+                    notes
+                )
+            )
+
+            row = cur.fetchone()
+
+        conn.commit()
+
+        return {
+            "message": "Customer action created successfully",
+            "action_id": row[0],
+            "customer_id": row[1],
+            "action_type": row[2],
+            "owner": row[3],
+            "notes": row[4],
+            "status": row[5],
+            "created_at": row[6]
+        }
 
     finally:
         conn.close()

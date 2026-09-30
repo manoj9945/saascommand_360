@@ -13,6 +13,8 @@ function App() {
   const [churnRisk, setChurnRisk] = useState([]);
   const [dataQuality, setDataQuality] = useState([]);
   const [forecasts, setForecasts] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
+  const [riskSummary, setRiskSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -22,6 +24,8 @@ function App() {
       setError("");
 
       const [
+        dashboardResponse,
+        riskResponse,
         revenueResponse,
         usageResponse,
         eventsResponse,
@@ -32,6 +36,8 @@ function App() {
         dataQualityResponse,
         forecastsResponse
       ] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/dashboard`),
+        fetch(`${API_BASE_URL}/api/risk`),
         fetch(`${API_BASE_URL}/api/revenue`),
         fetch(`${API_BASE_URL}/api/product/usage?limit=8`),
         fetch(`${API_BASE_URL}/api/events/live?limit=8`),
@@ -44,6 +50,8 @@ function App() {
       ]);
 
       if (
+        !dashboardResponse.ok ||
+        !riskResponse.ok ||
         !revenueResponse.ok ||
         !usageResponse.ok ||
         !eventsResponse.ok ||
@@ -57,6 +65,8 @@ function App() {
         throw new Error("One or more API requests failed.");
       }
 
+      const dashboardData = await dashboardResponse.json();
+      const riskData = await riskResponse.json();
       const revenueData = await revenueResponse.json();
       const usageData = await usageResponse.json();
       const eventsData = await eventsResponse.json();
@@ -67,6 +77,8 @@ function App() {
       const dataQualityData = await dataQualityResponse.json();
       const forecastsData = await forecastsResponse.json();
 
+      setDashboard(dashboardData);
+      setRiskSummary(riskData);
       setRevenue(revenueData);
       setUsage(usageData);
       setLiveEvents(eventsData);
@@ -99,25 +111,7 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalMRR = revenue.reduce(
-    (total, item) => total + Number(item.active_mrr || 0),
-    0
-  );
 
-  const totalARR = revenue.reduce(
-    (total, item) => total + Number(item.active_arr || 0),
-    0
-  );
-
-  const totalCustomers = revenue.reduce(
-    (total, item) => total + Number(item.active_customers || 0),
-    0
-  );
-
-  const totalSubscriptions = revenue.reduce(
-    (total, item) => total + Number(item.active_subscriptions || 0),
-    0
-  );
 
   const formatCurrency = (value) =>
     new Intl.NumberFormat("en-IN", {
@@ -149,25 +143,25 @@ function App() {
             <section className="kpi-grid">
               <div className="kpi-card">
                 <span>Active MRR</span>
-                <strong>{formatCurrency(totalMRR)}</strong>
+                <strong>{formatCurrency(dashboard.active_mrr)}</strong>
                 <small>Monthly recurring revenue</small>
               </div>
 
               <div className="kpi-card">
                 <span>Active ARR</span>
-                <strong>{formatCurrency(totalARR)}</strong>
+                <strong>{formatCurrency(dashboard.active_arr)}</strong>
                 <small>Annual recurring revenue</small>
               </div>
 
               <div className="kpi-card">
                 <span>Active Customers</span>
-                <strong>{totalCustomers.toLocaleString()}</strong>
+                <strong>{dashboard.active_customers.toLocaleString()}</strong>
                 <small>Customers with active subscriptions</small>
               </div>
 
               <div className="kpi-card">
                 <span>Active Subscriptions</span>
-                <strong>{totalSubscriptions.toLocaleString()}</strong>
+                <strong>{dashboard.active_subscriptions.toLocaleString()}</strong>
                 <small>Current active subscriptions</small>
               </div>
             </section>
@@ -333,6 +327,40 @@ function App() {
   </div>
 </div>
 
+{riskSummary && (
+  <div className="section-card">
+    <div className="section-header">
+      <div>
+        <h2>Risk Summary</h2>
+        <p>Overall customer churn-risk distribution</p>
+      </div>
+    </div>
+
+    <div className="kpi-grid">
+      <div className="kpi-card">
+        <span>Total Customers</span>
+        <strong>{riskSummary.total_customers}</strong>
+      </div>
+
+      <div className="kpi-card">
+        <span>High Risk</span>
+        <strong>{riskSummary.high_risk_customers}</strong>
+      </div>
+
+      <div className="kpi-card">
+        <span>Medium Risk</span>
+        <strong>{riskSummary.medium_risk_customers}</strong>
+      </div>
+
+      <div className="kpi-card">
+        <span>Low Risk</span>
+        <strong>{riskSummary.low_risk_customers}</strong>
+      </div>
+    </div>
+  </div>
+)}
+
+
 <div className="section-card">
   <div className="section-header">
     <div>
@@ -401,45 +429,87 @@ function App() {
                         <td>{alert.status}</td>
                         <td>{alert.reason}</td>
                         <td>
-                            {alert.status === "Open" ? (
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const response = await fetch(
-                                                `${API_BASE_URL}/api/alerts/${alert.alert_id}/acknowledge`,
-                                                {
-                                                    method: "POST",
-                                                }
-                                            );
+    {alert.status === "Open" ? (
+        <>
+            <button
+                onClick={async () => {
+                    try {
+                        const response = await fetch(
+                            `${API_BASE_URL}/api/alerts/${alert.alert_id}/acknowledge`,
+                            {
+                                method: "POST",
+                            }
+                        );
 
-                                            if (!response.ok) {
-                                                throw new Error(
-                                                    "Failed to acknowledge alert"
-                                                );
-                                            }
+                        if (!response.ok) {
+                            throw new Error("Failed to acknowledge alert");
+                        }
 
-                                            setAlerts((currentAlerts) =>
-                                                currentAlerts.map((item) =>
-                                                    item.alert_id ===
-                                                    alert.alert_id
-                                                        ? {
-                                                              ...item,
-                                                              status: "Acknowledged",
-                                                          }
-                                                        : item
-                                                )
-                                            );
-                                        } catch (error) {
-                                            console.error(error);
-                                        }
-                                    }}
-                                >
-                                    Acknowledge
-                                </button>
-                            ) : (
-                                "Done"
-                            )}
-                        </td>
+                        setAlerts((currentAlerts) =>
+                            currentAlerts.map((item) =>
+                                item.alert_id === alert.alert_id
+                                    ? {
+                                          ...item,
+                                          status: "Acknowledged",
+                                      }
+                                    : item
+                            )
+                        );
+                    } catch (error) {
+                        console.error(error);
+                    }
+                }}
+            >
+                Acknowledge
+            </button>
+
+            <button
+                onClick={async () => {
+                    try {
+                        let actionType = "Customer Success Outreach";
+
+                        if (alert.alert_type === "Expansion Opportunity") {
+                            actionType = "Expansion Outreach";
+                        } else if (alert.alert_type === "Payment Failure") {
+                            actionType = "Billing Follow-up";
+                        }
+
+                        const params = new URLSearchParams({
+                            customer_id: String(alert.customer_id),
+                            action_type: actionType,
+                            owner: alert.owner || "CSM",
+                            notes: alert.reason || "",
+                        });
+
+                        const response = await fetch(
+                            `${API_BASE_URL}/api/customer-action?${params.toString()}`,
+                            {
+                                method: "POST",
+                            }
+                        );
+
+                        if (!response.ok) {
+                            throw new Error("Failed to create customer action");
+                        }
+
+                        const result = await response.json();
+
+                        window.alert(
+                            `Customer action created successfully.\nAction ID: ${result.action_id}`
+                        );
+                    } catch (error) {
+                        console.error(error);
+                        window.alert("Failed to create customer action.");
+                    }
+                }}
+            >
+                Create Action
+            </button>
+        </>
+    ) : (
+        "Done"
+    )}
+</td>
                     </tr>
                 ))}
             </tbody>
