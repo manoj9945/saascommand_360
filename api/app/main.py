@@ -1,9 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import joblib
+from pydantic import BaseModel
 
 from api.app.db import get_connection
+from api.app.auth import (
+    verify_password,
+    create_access_token,
+    get_current_user,
+    require_admin,
+)
 
 app = FastAPI(
     title="SaaSCommand 360 API",
@@ -27,6 +34,84 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/login")
+def login(request: LoginRequest):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    user_id,
+                    email,
+                    password_hash,
+                    full_name,
+                    role,
+                    is_active
+                FROM public.app_users
+                WHERE email = %s;
+                """,
+                (request.email.strip().lower(),),
+            )
+
+            user = cur.fetchone()
+
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password",
+            )
+
+        user_id, email, stored_password_hash, full_name, role, is_active = user
+
+        if not is_active:
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive",
+            )
+
+        if not verify_password(request.password, stored_password_hash):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password",
+            )
+
+        access_token = create_access_token(
+            user_id=user_id,
+            email=email,
+            role=role,
+        )
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "user_id": user_id,
+                "email": email,
+                "full_name": full_name,
+                "role": role,
+            },
+        }
+
+    finally:
+        conn.close()
+
+
+@app.get("/api/auth/me")
+def get_me(current_user: dict = Depends(get_current_user)):
+    return {
+        "user_id": int(current_user["sub"]),
+        "email": current_user["email"],
+        "role": current_user["role"],
+    }
+
 @app.get("/")
 def root():
     return {
@@ -42,7 +127,7 @@ def api_health():
     }
 
 @app.get("/api/dashboard")
-def get_dashboard():
+def get_dashboard(current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -144,7 +229,7 @@ def get_dashboard():
         conn.close()
 
 @app.get("/api/events/live")
-def get_live_events(limit: int = 20):
+def get_live_events(limit: int = 20, current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -188,7 +273,7 @@ def get_live_events(limit: int = 20):
 
 
 @app.get("/api/revenue")
-def get_revenue():
+def get_revenue(current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -215,7 +300,7 @@ def get_revenue():
 
 
 @app.get("/api/customers/{customer_id}/health")
-def get_customer_health(customer_id: int):
+def get_customer_health(customer_id: int, current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -259,7 +344,7 @@ def get_customer_health(customer_id: int):
 
 
 @app.get("/api/product/usage")
-def get_product_usage(limit: int = 100):
+def get_product_usage(limit: int = 100, current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -300,7 +385,7 @@ def get_product_usage(limit: int = 100):
         conn.close()
 
 @app.get("/api/customer-health")
-def get_customer_health(limit: int = 10):
+def get_customer_health(limit: int = 10, current_user: dict = Depends(get_current_user)):
 
     conn = get_connection()
 
@@ -341,7 +426,7 @@ def get_customer_health(limit: int = 10):
 
 
 @app.get("/api/churn-risk")
-def get_churn_risk(limit: int = 10):
+def get_churn_risk(limit: int = 10, current_user: dict = Depends(get_current_user)):
     conn = get_connection()
 
     try:
@@ -571,7 +656,7 @@ def get_churn_risk(limit: int = 10):
 
 
 @app.get("/api/risk")
-def get_risk_summary():
+def get_risk_summary(current_user: dict = Depends(get_current_user)):
 
     # Reuse the exact same churn-risk calculation
     # and retrieve all eligible customers.
@@ -606,7 +691,7 @@ def get_risk_summary():
 
 
 @app.get("/api/alerts")
-def get_alerts(limit: int = 20):
+def get_alerts(limit: int = 20, current_user: dict = Depends(get_current_user)):
     conn = get_connection()
 
     try:
@@ -656,7 +741,7 @@ def get_alerts(limit: int = 20):
 
 
 @app.post("/api/alerts/{alert_id}/acknowledge")
-def acknowledge_alert(alert_id: int):
+def acknowledge_alert(alert_id: int, current_user: dict = Depends(require_admin)):
     conn = get_connection()
 
     try:
@@ -708,7 +793,7 @@ def acknowledge_alert(alert_id: int):
 
 
 @app.get("/api/data-quality")
-def get_data_quality():
+def get_data_quality(current_user: dict = Depends(get_current_user)):
     conn = get_connection()
 
     try:
@@ -756,7 +841,7 @@ def get_data_quality():
 
 
 @app.get("/api/forecasts")
-def get_revenue_forecasts():
+def get_revenue_forecasts(current_user: dict = Depends(get_current_user)):
     conn = get_connection()
 
     try:
@@ -796,7 +881,8 @@ def create_customer_action(
     customer_id: int,
     action_type: str,
     owner: str = "CSM",
-    notes: str = ""
+    notes: str = "",
+    current_user: dict = Depends(require_admin),
 ):
     conn = get_connection()
 

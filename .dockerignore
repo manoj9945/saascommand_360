@@ -1,0 +1,14 @@
+.venv
+.git
+.github
+.env
+*.pyc
+__pycache__
+airflow/logs
+data/raw
+data/bronze
+data/silver
+node_modules
+frontend/node_modules
+frontend/dist
+SaaSCommand_360_full_dataset.zip
